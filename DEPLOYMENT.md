@@ -71,13 +71,16 @@ sudo ufw enable
 
 ---
 
-## 5. Run with PM2 (keeps it alive after reboot)
+## 5. Run with PM2
 
 ```bash
 sudo npm install -g pm2
 
+# Create logs directory
+mkdir -p ~/payroll/logs
+
 cd ~/payroll
-pm2 start npm --name payroll -- start
+pm2 start ecosystem.config.js
 pm2 save
 
 # Auto-start on server reboot:
@@ -100,7 +103,7 @@ Visit: `http://your-vps-ip:3000`
 Whenever you push new code to GitHub, SSH into the VPS and run:
 
 ```bash
-cd ~/payroll && git pull && npm install && npm run build && pm2 restart payroll
+cd ~/payroll && git pull && npm install && npm run build && pm2 reload ecosystem.config.js
 ```
 
 Or save it as a script:
@@ -116,7 +119,7 @@ cd ~/payroll
 git pull
 npm install
 npm run build
-pm2 restart payroll
+pm2 reload ecosystem.config.js
 echo "✅ Deployed successfully"
 ```
 
@@ -130,11 +133,11 @@ chmod +x ~/deploy.sh
 ## Useful PM2 Commands
 
 ```bash
-pm2 status              # check if app is running
-pm2 logs payroll        # live logs
-pm2 logs payroll --lines 50  # last 50 lines
-pm2 restart payroll     # restart after config changes
-pm2 stop payroll        # stop the app
+pm2 status                           # check if app is running
+pm2 logs payroll                     # live logs
+pm2 logs payroll --lines 50          # last 50 lines
+pm2 reload ecosystem.config.js       # zero-downtime restart
+pm2 stop payroll                     # stop the app
 ```
 
 ---

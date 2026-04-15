@@ -31,3 +31,6 @@ yarn-error.log*
 *.pem
 .vscode/
 .idea/
+
+# pm2 logs
+/logs
