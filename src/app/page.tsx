@@ -419,7 +419,7 @@ export default function Home() {
               alignItems: 'center',
               gap: '0.4rem',
             }}>
-              <IconEmail className="w-3 h-3" style={{ flexShrink: 0 }} />
+              <IconEmail className="w-3 h-3" />
               Sending via <span style={{ color: 'var(--ink)', fontWeight: 500 }}>
                 {process.env.NEXT_PUBLIC_SMTP_FROM_DISPLAY || 'clcpayroll@adventist.ph'}
               </span>
