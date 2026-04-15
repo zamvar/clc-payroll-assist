@@ -1,0 +1,42 @@
+# render.yaml — Render.com deployment configuration for CLC Payroll Dispatch
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: clc-payroll-assist
+    runtime: node
+
+    # Render will auto-detect Node version from .nvmrc or package.json engines
+    # Ensure you're on Node 20+
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+
+    # Free tier sleeps after 15min inactivity — fine for monthly payroll runs.
+    # Upgrade to Starter ($7/mo) to keep it always-on.
+    plan: free
+
+    # Health check — Render uses this to confirm the app is running
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # ── SMTP (Gmail App Password) ─────────────────────────────────────────
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        value: clcpayroll@adventist.ph
+      - key: SMTP_FROM
+        value: "CLC Payroll <clcpayroll@adventist.ph>"
+
+      # These must be set manually in Render Dashboard → Environment
+      # (never commit secrets to the repo)
+      - key: SMTP_PASS
+        sync: false   # ← set this in Render dashboard
+      - key: ACCESS_PASSWORD
+        sync: false   # ← the password users type on /login
+      - key: COOKIE_SECRET
+        sync: false   # ← run: openssl rand -hex 32
