@@ -95,7 +95,8 @@ function clearAttempts(ip: string): void {
 const COOKIE_NAME = 'payroll_session'
 const COOKIE_OPTS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  // secure: true requires HTTPS — set COOKIE_SECURE=true only when running behind HTTPS
+  secure: process.env.COOKIE_SECURE === 'true',
   sameSite: 'lax' as const,
   path: '/',
   maxAge: 60 * 60 * 8, // 8 hours
