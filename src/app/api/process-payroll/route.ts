@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 import { parseRosterCSV } from '@/lib/csv-parser'
-import { extractAllPages, matchEmployeeToPage, extractSinglePage } from '@/lib/pdf-processor'
+import { extractAllPages, matchEmployeeToPage, loadPdf, extractSinglePageFromDoc } from '@/lib/pdf-processor'
 import { createSmtpTransport, sendPayslipEmail } from '@/lib/email-sender'
 import { createJob, addLogEntry, finalizeJob, updateJob } from '@/lib/job-store'
 import type { Employee, LogEntry } from '@/lib/types'
@@ -94,12 +94,14 @@ interface ProcessOptions {
 async function processPayroll(opts: ProcessOptions) {
   const { jobId, rosterMap, ledgerBuffer, payslipBuffer, idPattern } = opts
 
-  // ── A. Scan both PDFs — extract all pages with their IDs + text ───────
-  updateJob(jobId, { currentEmployee: 'Scanning Ledger PDF…' })
-  const ledgerPages = await extractAllPages(ledgerBuffer, idPattern)
-
-  updateJob(jobId, { currentEmployee: 'Scanning Payslip PDF…' })
-  const payslipPages = await extractAllPages(payslipBuffer, idPattern)
+  // ── A. Scan both PDFs concurrently + pre-load doc objects ─────────────
+  updateJob(jobId, { currentEmployee: 'Scanning PDFs…' })
+  const [ledgerPages, payslipPages, ledgerDoc, payslipDoc] = await Promise.all([
+    extractAllPages(ledgerBuffer, idPattern),
+    extractAllPages(payslipBuffer, idPattern),
+    loadPdf(ledgerBuffer),   // pre-load ONCE — reused for all 300 employees
+    loadPdf(payslipBuffer),  // pre-load ONCE — reused for all 300 employees
+  ])
 
   // ── B. Create ONE shared SMTP transporter for the entire batch ─────────
   // IMPORTANT: never call createSmtpTransport() inside the employee loop.
@@ -136,10 +138,10 @@ async function processPayroll(opts: ProcessOptions) {
     }
 
     try {
-      // Extract individual pages (whichever was matched)
+      // Extract individual pages using pre-loaded doc objects (no re-parse per employee)
       const [ledgerPdf, payslipPdf] = await Promise.all([
-        ledgerMatch  ? extractSinglePage(ledgerBuffer,  ledgerMatch.pageIndex)  : Promise.resolve(null),
-        payslipMatch ? extractSinglePage(payslipBuffer, payslipMatch.pageIndex) : Promise.resolve(null),
+        ledgerMatch  ? extractSinglePageFromDoc(ledgerDoc,  ledgerMatch.pageIndex)  : Promise.resolve(null),
+        payslipMatch ? extractSinglePageFromDoc(payslipDoc, payslipMatch.pageIndex) : Promise.resolve(null),
       ])
 
       await sendPayslipEmail({ employee, ledgerPdf, payslipPdf, transporter, from })

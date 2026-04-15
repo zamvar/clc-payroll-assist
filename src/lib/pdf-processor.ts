@@ -204,7 +204,35 @@ export function matchEmployeeToPage(
 // ─── Page extraction ─────────────────────────────────────────────────────────
 
 /**
+ * Load a PDF buffer into a PDFDocument object.
+ * Call this ONCE per PDF and reuse the result across all employees
+ * — avoids parsing the entire PDF for every extractSinglePageFromDoc call.
+ */
+export async function loadPdf(buffer: Buffer): Promise<PDFDocument> {
+  return PDFDocument.load(buffer)
+}
+
+/**
+ * Extract a single page from an already-loaded PDFDocument.
+ * Use this inside the employee loop — the doc was pre-loaded by loadPdf().
+ *
+ * @param srcDoc    Pre-loaded source PDFDocument (call loadPdf() once, reuse here)
+ * @param pageIndex 0-based page index
+ */
+export async function extractSinglePageFromDoc(
+  srcDoc: PDFDocument,
+  pageIndex: number
+): Promise<Buffer> {
+  const newDoc = await PDFDocument.create()
+  const [copiedPage] = await newDoc.copyPages(srcDoc, [pageIndex])
+  newDoc.addPage(copiedPage)
+  const bytes = await newDoc.save()
+  return Buffer.from(bytes)
+}
+
+/**
  * Extract a single page from a PDF buffer and return it as a new single-page PDF Buffer.
+ * @deprecated Use loadPdf() + extractSinglePageFromDoc() for batch operations.
  *
  * @param pdfBuffer  Source PDF bytes
  * @param pageIndex  0-based page index
@@ -214,13 +242,7 @@ export async function extractSinglePage(
   pageIndex: number
 ): Promise<Buffer> {
   const srcDoc = await PDFDocument.load(pdfBuffer)
-  const newDoc = await PDFDocument.create()
-
-  const [copiedPage] = await newDoc.copyPages(srcDoc, [pageIndex])
-  newDoc.addPage(copiedPage)
-
-  const bytes = await newDoc.save()
-  return Buffer.from(bytes)
+  return extractSinglePageFromDoc(srcDoc, pageIndex)
 }
 
 /**
