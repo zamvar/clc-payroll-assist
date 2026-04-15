@@ -14,9 +14,6 @@ module.exports = {
         PORT: 3000,
         NODE_OPTIONS: '--max-old-space-size=4096',  // allow Node.js to use up to 4GB heap
       },
-      // Logging — absolute paths so PM2 resolves them correctly
-      out_file: '/root/payroll/logs/out.log',
-      error_file: '/root/payroll/logs/error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
     },
