@@ -1,8 +1,8 @@
-import { createTransport } from 'nodemailer'
+import { createTransport, type Transporter } from 'nodemailer'
 import type { Employee } from './types'
 
-// Infer the transporter type directly from createTransport — no named type import needed
-type SmtpTransporter = ReturnType<typeof createTransport>
+// Transporter<any> accepts both pool and non-pool variants from @types/nodemailer
+type SmtpTransporter = Transporter<any>
 
 // Local attachment shape compatible with nodemailer's expected format
 interface Attachment {
