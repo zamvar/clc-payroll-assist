@@ -12,7 +12,7 @@ module.exports = {
       max_memory_restart: '2G',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3030,
         NODE_OPTIONS: '--max-old-space-size=4096',
       },
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
