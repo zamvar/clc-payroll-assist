@@ -5,7 +5,6 @@ import { extractAllPages, matchEmployeeToPage, extractSinglePage } from '@/lib/p
 import { createSmtpTransport, sendPayslipEmail } from '@/lib/email-sender'
 import { createJob, addLogEntry, finalizeJob, updateJob } from '@/lib/job-store'
 import type { Employee, LogEntry } from '@/lib/types'
-import type { SmtpConfig } from '@/lib/email-sender'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300           // 5 min timeout
@@ -20,7 +19,7 @@ export async function POST(req: NextRequest) {
     const ledgerFile = formData.get('ledger') as File | null
     const payslipFile = formData.get('payslip') as File | null
     const idPatternRaw = formData.get('idPattern') as string | null
-    const smtpConfigRaw = formData.get('smtpConfig') as string | null
+    // smtpConfig comes from env vars only — no UI override
 
     if (!csvFile) return NextResponse.json({ error: 'Missing roster CSV file.' }, { status: 400 })
     if (!ledgerFile) return NextResponse.json({ error: 'Missing ledger PDF file.' }, { status: 400 })
@@ -32,15 +31,6 @@ export async function POST(req: NextRequest) {
       idPatternRaw?.trim() ||
       '(?:ER\\s*Code|Employee\\s*(?:ID|Code|No\\.?)|Emp(?:loyee)?\\s*(?:ID|Code|No\\.?))[:\\s]*([A-Z]{2,3}[A-Z0-9]{3,})|\\b(ER[A-Z]{3,6}[0-9]{2})\\b'
 
-    // Parse optional SMTP override from UI
-    let smtpConfig: EmailSmtpConfig | undefined
-    if (smtpConfigRaw) {
-      try {
-        smtpConfig = JSON.parse(smtpConfigRaw) as EmailSmtpConfig
-      } catch {
-        // ignore parse errors — fall back to env vars
-      }
-    }
 
     // ── 2. Convert files to Buffers ────────────────────────────────────────
     const [csvAB, ledgerAB, payslipAB] = await Promise.all([
@@ -74,7 +64,6 @@ export async function POST(req: NextRequest) {
       ledgerBuffer: ledgerBuf,
       payslipBuffer,
       idPattern,
-      smtpConfig,
       csvErrors,
     }).catch((err) => {
       console.error('[processPayroll] fatal error:', err)
@@ -99,12 +88,11 @@ interface ProcessOptions {
   ledgerBuffer: Buffer
   payslipBuffer: Buffer
   idPattern: string
-  smtpConfig?: SmtpConfig
   csvErrors: string[]
 }
 
 async function processPayroll(opts: ProcessOptions) {
-  const { jobId, rosterMap, ledgerBuffer, payslipBuffer, idPattern, smtpConfig } = opts
+  const { jobId, rosterMap, ledgerBuffer, payslipBuffer, idPattern } = opts
 
   // ── A. Scan both PDFs — extract all pages with their IDs + text ───────
   updateJob(jobId, { currentEmployee: 'Scanning Ledger PDF…' })
@@ -116,7 +104,7 @@ async function processPayroll(opts: ProcessOptions) {
   // ── B. Create ONE shared SMTP transporter for the entire batch ─────────
   // IMPORTANT: never call createSmtpTransport() inside the employee loop.
   // Opening 300 separate TCP connections will cause Gmail to throttle/reject.
-  const { transporter, from } = createSmtpTransport(smtpConfig)
+  const { transporter, from } = createSmtpTransport()
   updateJob(jobId, { currentEmployee: 'Dispatching emails…' })
 
   // ── B. For each employee: fuzzy-match → extract pages → email ─────────
