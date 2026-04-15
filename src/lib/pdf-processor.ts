@@ -107,7 +107,7 @@ function trailingCharsMissing(full: string, partial: string): number {
  *
  * Returns the pageIndex of the best-scoring candidate, or null if none match.
  */
-function nameFallback(employee: Employee, candidates: PageData[]): number | null {
+function nameFallback(employee: Employee, candidates: PageData[], minScore = 1): number | null {
   const firstName = employee.firstName?.toLowerCase().trim() ?? ''
   const lastName  = employee.lastName?.toLowerCase().trim()  ?? ''
 
@@ -123,18 +123,19 @@ function nameFallback(employee: Employee, candidates: PageData[]): number | null
       if (firstName && lastName && text.includes(firstName) && text.includes(lastName)) score += 1
       return { pageIndex: p.pageIndex, score }
     })
-    .filter((s) => s.score > 0)
+    .filter((s) => s.score >= minScore)
     .sort((a, b) => b.score - a.score)
 
   if (scored.length === 0) return null
 
-  // Unambiguous if the top scorer has a higher score than the runner-up
+  // Only return a match if the top scorer is unambiguously better than the runner-up.
+  // On a tie we return null — it's safer to mark as no-match than to guess.
   if (scored.length === 1 || scored[0].score > scored[1].score) {
     return scored[0].pageIndex
   }
 
-  // Still tied — return first (best guess)
-  return scored[0].pageIndex
+  // Tied — do not guess, let the caller mark this as no-match
+  return null
 }
 
 /**
@@ -190,9 +191,10 @@ export function matchEmployeeToPage(
   }
 
   // ── Tier 3: Pure name fallback (no ID match at all) ────────────────────
-  // Only try if we have name data — avoids false positives on nameless rows
-  if (employee.firstName || employee.lastName) {
-    const idx = nameFallback(employee, pages)
+  // Requires BOTH first AND last name to avoid partial matches on common surnames.
+  // Minimum score of 5 = firstName match (2) + lastName match (2) + both bonus (1).
+  if (employee.firstName && employee.lastName) {
+    const idx = nameFallback(employee, pages, 5)  // require both names (score ≥ 5)
     return idx != null ? { pageIndex: idx, matchType: 'name' } : null
   }
 
