@@ -68,16 +68,24 @@ export async function extractAllPages(
   pdfBuffer: Buffer,
   idPattern: string
 ): Promise<PageData[]> {
-  const regex = new RegExp(idPattern, 'i')
+  // Use global flag 'g' to find all matches on the page, avoiding the "Employee Name" trap
+  const regex = new RegExp(idPattern, 'gi')
   const texts = await extractPagesText(pdfBuffer)
 
   return texts.map((text, pageIndex) => {
-    const match = text.match(regex)
+    const matches = [...text.matchAll(regex)]
     let rawId: string | null = null
 
-    if (match) {
-      // Use first non-empty capture group
-      rawId = match.slice(1).find((g) => g && g.trim())?.trim() ?? null
+    if (matches.length > 0) {
+      for (const match of matches) {
+        // Use first non-empty capture group
+        const found = match.slice(1).find((g) => g && g.trim())?.trim()
+        // Ensure what we capture actually looks like an ER code to avoid false positives
+        if (found && found.toUpperCase().startsWith('ER')) {
+          rawId = found.toUpperCase()
+          break
+        }
+      }
     }
 
     return { pageIndex, rawId, text }

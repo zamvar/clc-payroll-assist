@@ -26,10 +26,10 @@ export async function POST(req: NextRequest) {
     if (!payslipFile) return NextResponse.json({ error: 'Missing payslip PDF file.' }, { status: 400 })
 
     // Default ID pattern — matches CLC ER Code format: ERCONEL02, ERFOFWA01, etc.
-    // Also handles explicit labels like "ER Code: ERCONEL02" or "Employee Code: XYZ"
+    // Updated to allow 1 digit endings (due to truncated payslips) and explicitly require ER prefix
     const idPattern =
       idPatternRaw?.trim() ||
-      '(?:ER\\s*Code|Employee\\s*(?:ID|Code|No\\.?)|Emp(?:loyee)?\\s*(?:ID|Code|No\\.?))[:\\s]*([A-Z]{2,3}[A-Z0-9]{3,})|\\b(ER[A-Z]{3,6}[0-9]{2})\\b'
+      '(?:ER\\s*Code|Account\\s*Code|Employee\\s*(?:ID|Code|No\\.?)|Emp(?:loyee)?\\s*(?:ID|Code|No\\.?))[:\\s]*(ER[A-Z0-9]{4,})|\\b(ER[A-Z]{3,6}[0-9]{1,2})\\b'
 
     const isDryRun = formData.get('isDryRun') === 'true'
 

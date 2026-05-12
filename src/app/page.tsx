@@ -188,8 +188,9 @@ function MatchBadge({ type }: { type: MatchType | null }) {
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 // Matches bare ER codes (e.g. ERCONEL02) or labeled (e.g. "ER Code: ERCONEL02")
+// Updated to explicitly require the 'ER' prefix and allow truncated 1-digit endings.
 const DEFAULT_ID_PATTERN =
-  '(?:ER\\s*Code|Employee\\s*(?:ID|Code|No\\.?)|Emp(?:loyee)?\\s*(?:ID|Code|No\\.?))[:\\s]*([A-Z]{2,3}[A-Z0-9]{3,})|\\b(ER[A-Z]{3,6}[0-9]{2})\\b'
+  '(?:ER\\s*Code|Account\\s*Code|Employee\\s*(?:ID|Code|No\\.?)|Emp(?:loyee)?\\s*(?:ID|Code|No\\.?))[:\\s]*(ER[A-Z0-9]{4,})|\\b(ER[A-Z]{3,6}[0-9]{1,2})\\b'
 
 export default function Home() {
   // ── File state ────────────────────────────────────────────────────────────
