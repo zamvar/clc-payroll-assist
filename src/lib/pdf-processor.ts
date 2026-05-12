@@ -116,8 +116,9 @@ function trailingCharsMissing(full: string, partial: string): number {
  * the employee's first/last name appear in the page text.
  */
 function nameFallback(employee: Employee, candidates: PageData[], minScore = 1): number | null {
-  const firstName = employee.firstName?.trim() ?? ''
-  const lastName  = employee.lastName?.trim()  ?? ''
+  // Strip punctuation that breaks word boundaries (e.g., "JOSE,")
+  const firstName = (employee.firstName?.trim() ?? '').replace(/[.,]/g, '')
+  const lastName  = (employee.lastName?.trim()  ?? '').replace(/[.,]/g, '')
 
   if (!firstName && !lastName) return null
 
