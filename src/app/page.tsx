@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useEffect, DragEvent, ChangeEvent } from 'react'
+import { useRef, useState, useEffect, DragEvent, ChangeEvent, useMemo } from 'react'
 import type { JobState, LogEntry, MatchType } from '@/lib/types'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -202,6 +202,11 @@ export default function Home() {
   const idPattern = DEFAULT_ID_PATTERN
   const [isDryRun, setIsDryRun] = useState(false)
 
+  // ── Sorting state ─────────────────────────────────────────────────────────
+  type SortKey = 'employeeId' | 'name' | 'email' | 'ledgerPage' | 'payslipPage' | 'status' | 'error'
+  const [sortKey, setSortKey] = useState<SortKey>('employeeId')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
   // ── Job state ─────────────────────────────────────────────────────────────
   const [jobId, setJobId]     = useState<string | null>(null)
   const [job, setJob]         = useState<JobState | null>(null)
@@ -292,6 +297,54 @@ export default function Home() {
     : 0
 
   const canSubmit = !!csvFile && !!ledgerFile && !!payslipFile && !isProcessing && !submitting
+
+  // ── Sorting logic ─────────────────────────────────────────────────────────
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  const sortedLog = useMemo(() => {
+    if (!job?.log) return []
+    return [...job.log].sort((a, b) => {
+      let aVal: string | number = a[sortKey] ?? ''
+      let bVal: string | number = b[sortKey] ?? ''
+      
+      // Handle statuses to group naturally
+      if (sortKey === 'status') {
+        const order = { 'failed': 0, 'no-match': 1, 'success': 2 }
+        aVal = order[a.status]
+        bVal = order[b.status]
+      }
+      // Handle pages (null to bottom)
+      else if (sortKey === 'ledgerPage' || sortKey === 'payslipPage') {
+        aVal = aVal === '' ? 999999 : Number(aVal)
+        bVal = bVal === '' ? 999999 : Number(bVal)
+      } else if (typeof aVal === 'string' && typeof bVal === 'string') {
+        aVal = aVal.toLowerCase()
+        bVal = bVal.toLowerCase()
+      }
+
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [job?.log, sortKey, sortDir])
+
+  const SortHeader = ({ label, sortableKey }: { label: string, sortableKey: SortKey }) => (
+    <th onClick={() => handleSort(sortableKey)} style={{ cursor: 'pointer', userSelect: 'none' }}>
+      {label}
+      {sortKey === sortableKey && (
+        <span style={{ marginLeft: '0.3rem', display: 'inline-block', transform: sortDir === 'asc' ? 'rotate(180deg)' : 'none' }}>
+          ▾
+        </span>
+      )}
+    </th>
+  )
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -579,17 +632,17 @@ export default function Home() {
                 <table className="log-table">
                   <thead>
                     <tr>
-                      <th>ER Code</th>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Ledger Pg</th>
-                      <th>Payslip Pg</th>
-                      <th>Status</th>
-                      <th>Note</th>
+                      <SortHeader label="ER Code" sortableKey="employeeId" />
+                      <SortHeader label="Name" sortableKey="name" />
+                      <SortHeader label="Email" sortableKey="email" />
+                      <SortHeader label="Ledger Pg" sortableKey="ledgerPage" />
+                      <SortHeader label="Payslip Pg" sortableKey="payslipPage" />
+                      <SortHeader label="Status" sortableKey="status" />
+                      <SortHeader label="Note" sortableKey="error" />
                     </tr>
                   </thead>
                   <tbody>
-                    {job.log.map((entry, i) => (
+                    {sortedLog.map((entry, i) => (
                       <tr
                         key={`${entry.employeeId}-${i}`}
                         className={
@@ -610,7 +663,7 @@ export default function Home() {
                           <MatchBadge type={entry.payslipMatch} />
                         </td>
                         <td><StatusBadge status={entry.status} /></td>
-                        <td style={{ color: 'var(--ink-faint)', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <td style={{ color: 'var(--ink-faint)', maxWidth: '350px', wordBreak: 'break-word' }}>
                           {entry.error ?? '—'}
                         </td>
                       </tr>
