@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       idPatternRaw?.trim() ||
       '(?:ER\\s*Code|Employee\\s*(?:ID|Code|No\\.?)|Emp(?:loyee)?\\s*(?:ID|Code|No\\.?))[:\\s]*([A-Z]{2,3}[A-Z0-9]{3,})|\\b(ER[A-Z]{3,6}[0-9]{2})\\b'
 
+    const isDryRun = formData.get('isDryRun') === 'true'
 
     // ── 2. Convert files to Buffers ────────────────────────────────────────
     const [csvAB, ledgerAB, payslipAB] = await Promise.all([
@@ -38,7 +39,18 @@ export async function POST(req: NextRequest) {
       ledgerFile.arrayBuffer(),
       payslipFile.arrayBuffer(),
     ])
-    const csvText      = Buffer.from(csvAB).toString('utf-8')
+
+    let csvText: string
+    try {
+      // Try strictly parsing as UTF-8
+      const decoder = new TextDecoder('utf-8', { fatal: true })
+      csvText = decoder.decode(csvAB)
+    } catch (e) {
+      // Fallback to windows-1252 (which covers typical Excel CSV exports with 'ñ')
+      const decoder = new TextDecoder('windows-1252')
+      csvText = decoder.decode(csvAB)
+    }
+
     const ledgerBuf    = Buffer.from(ledgerAB)
     const payslipBuffer = Buffer.from(payslipAB)
 
@@ -65,6 +77,7 @@ export async function POST(req: NextRequest) {
       payslipBuffer,
       idPattern,
       csvErrors,
+      isDryRun,
     }).catch((err) => {
       console.error('[processPayroll] fatal error:', err)
       finalizeJob(jobId, err instanceof Error ? err.message : String(err))
@@ -89,10 +102,11 @@ interface ProcessOptions {
   payslipBuffer: Buffer
   idPattern: string
   csvErrors: string[]
+  isDryRun: boolean
 }
 
 async function processPayroll(opts: ProcessOptions) {
-  const { jobId, rosterMap, ledgerBuffer, payslipBuffer, idPattern } = opts
+  const { jobId, rosterMap, ledgerBuffer, payslipBuffer, idPattern, isDryRun } = opts
 
   // ── A. Scan both PDFs concurrently + pre-load doc objects ─────────────
   updateJob(jobId, { currentEmployee: 'Scanning PDFs…' })
@@ -138,13 +152,15 @@ async function processPayroll(opts: ProcessOptions) {
     }
 
     try {
-      // Extract individual pages using pre-loaded doc objects (no re-parse per employee)
-      const [ledgerPdf, payslipPdf] = await Promise.all([
-        ledgerMatch  ? extractSinglePageFromDoc(ledgerDoc,  ledgerMatch.pageIndex)  : Promise.resolve(null),
-        payslipMatch ? extractSinglePageFromDoc(payslipDoc, payslipMatch.pageIndex) : Promise.resolve(null),
-      ])
+      if (!isDryRun) {
+        // Extract individual pages using pre-loaded doc objects (no re-parse per employee)
+        const [ledgerPdf, payslipPdf] = await Promise.all([
+          ledgerMatch  ? extractSinglePageFromDoc(ledgerDoc,  ledgerMatch.pageIndex)  : Promise.resolve(null),
+          payslipMatch ? extractSinglePageFromDoc(payslipDoc, payslipMatch.pageIndex) : Promise.resolve(null),
+        ])
 
-      await sendPayslipEmail({ employee, ledgerPdf, payslipPdf, transporter, from })
+        await sendPayslipEmail({ employee, ledgerPdf, payslipPdf, transporter, from })
+      }
       entry.status = 'success'
 
       // Warn if only one PDF was matched (still sends what we have)
@@ -152,6 +168,10 @@ async function processPayroll(opts: ProcessOptions) {
         entry.error = !ledgerMatch
           ? 'Ledger page not found — only payslip attached.'
           : 'Payslip page not found — only ledger attached.'
+          
+        if (isDryRun) entry.error += ' (Dry Run)'
+      } else if (isDryRun) {
+        entry.error = 'Matched successfully (Dry Run)'
       }
     } catch (err) {
       entry.status = 'failed'

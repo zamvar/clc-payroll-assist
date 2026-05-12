@@ -199,6 +199,7 @@ export default function Home() {
 
   // ── Settings state ────────────────────────────────────────────────────────
   const idPattern = DEFAULT_ID_PATTERN
+  const [isDryRun, setIsDryRun] = useState(false)
 
   // ── Job state ─────────────────────────────────────────────────────────────
   const [jobId, setJobId]     = useState<string | null>(null)
@@ -260,6 +261,7 @@ export default function Home() {
     form.append('ledger',  ledgerFile.file)
     form.append('payslip', payslipFile.file)
     form.append('idPattern', idPattern)
+    form.append('isDryRun', String(isDryRun))
 
     // SMTP config is read from .env.local on the server — no UI override needed
 
@@ -456,6 +458,25 @@ export default function Home() {
 
             {/* Action button — pushed to bottom with strong rule */}
             <div style={{ borderTop: '2px solid var(--ink)', paddingTop: '1.25rem' }}>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.75rem',
+                color: 'var(--ink)',
+                marginBottom: '1rem',
+                cursor: 'pointer',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={isDryRun}
+                  onChange={(e) => setIsDryRun(e.target.checked)}
+                  disabled={isProcessing || submitting}
+                  style={{ accentColor: 'var(--ink)', cursor: 'pointer' }}
+                />
+                Dry Run (Process matches without sending emails)
+              </label>
+
               <button
                 id="dispatch-btn"
                 className="btn-primary"
@@ -468,7 +489,7 @@ export default function Home() {
                 ) : isDone ? (
                   <><IconCheck className="w-4 h-4" /> Run Again</>
                 ) : (
-                  <><IconEmail className="w-4 h-4" /> Dispatch Payslips</>
+                  <><IconEmail className="w-4 h-4" /> {isDryRun ? 'Evaluate Matches' : 'Dispatch Payslips'}</>
                 )}
               </button>
 

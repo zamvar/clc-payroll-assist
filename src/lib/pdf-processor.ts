@@ -86,30 +86,30 @@ export async function extractAllPages(
 
 // ─── Fuzzy matching ───────────────────────────────────────────────────────────
 
+function escapeRegex(str: string) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /**
  * Compute how many trailing characters of `full` are missing from `partial`.
  * Returns the number of missing chars if `partial` is a prefix of `full`
  * (meaning the PDF exported a truncated ER Code), or -1 if not a prefix.
- *
- * e.g. full="ERCONEL02", partial="ERCONEL0" → 1
- *      full="ERCONEL02", partial="ERCONEL"  → 2
- *      full="ERCONEL02", partial="ERFOFWA01" → -1 (not a prefix)
  */
 function trailingCharsMissing(full: string, partial: string): number {
   if (!partial || partial.length >= full.length) return -1
-  if (full.startsWith(partial)) return full.length - partial.length
+  const f = full.toUpperCase()
+  const p = partial.toUpperCase()
+  if (f.startsWith(p)) return f.length - p.length
   return -1
 }
 
 /**
  * Name-based fallback: score each candidate page by how many words from
  * the employee's first/last name appear in the page text.
- *
- * Returns the pageIndex of the best-scoring candidate, or null if none match.
  */
 function nameFallback(employee: Employee, candidates: PageData[], minScore = 1): number | null {
-  const firstName = employee.firstName?.toLowerCase().trim() ?? ''
-  const lastName  = employee.lastName?.toLowerCase().trim()  ?? ''
+  const firstName = employee.firstName?.trim() ?? ''
+  const lastName  = employee.lastName?.trim()  ?? ''
 
   if (!firstName && !lastName) return null
 
@@ -117,10 +117,24 @@ function nameFallback(employee: Employee, candidates: PageData[], minScore = 1):
     .map((p) => {
       const text = p.text.toLowerCase()
       let score = 0
-      if (firstName && text.includes(firstName)) score += 2
-      if (lastName  && text.includes(lastName))  score += 2
+      
+      // Use word boundaries to prevent "Ri" from matching "Richard"
+      const hasFirst = firstName && new RegExp(`\\b${escapeRegex(firstName)}\\b`, 'i').test(text)
+      const hasLast  = lastName && new RegExp(`\\b${escapeRegex(lastName)}\\b`, 'i').test(text)
+      
+      // Fallback to substring if word boundary fails (e.g. "MENDOZA,RIMER" without spaces)
+      const hasFirstSub = !hasFirst && firstName && text.includes(firstName.toLowerCase())
+      const hasLastSub  = !hasLast && lastName && text.includes(lastName.toLowerCase())
+
+      if (hasFirst) score += 3
+      else if (hasFirstSub) score += 1
+
+      if (hasLast) score += 3
+      else if (hasLastSub) score += 1
+
       // Bonus: both present
-      if (firstName && lastName && text.includes(firstName) && text.includes(lastName)) score += 1
+      if ((hasFirst || hasFirstSub) && (hasLast || hasLastSub)) score += 2
+
       return { pageIndex: p.pageIndex, score }
     })
     .filter((s) => s.score >= minScore)
@@ -129,37 +143,30 @@ function nameFallback(employee: Employee, candidates: PageData[], minScore = 1):
   if (scored.length === 0) return null
 
   // Only return a match if the top scorer is unambiguously better than the runner-up.
-  // On a tie we return null — it's safer to mark as no-match than to guess.
   if (scored.length === 1 || scored[0].score > scored[1].score) {
     return scored[0].pageIndex
   }
 
-  // Tied — do not guess, let the caller mark this as no-match
+  // Tied — do not guess
   return null
 }
 
 /**
- * Find the best-matching page for an employee using a 3-tier strategy:
- *
- * Tier 1 — Exact match:       rawId === employee.id
- * Tier 2 — Fuzzy prefix:      rawId is a prefix of employee.id, ≤ 2 chars short
- * Tier 3 — Name fallback:     search page text for firstName + lastName
- *           (used when tier 1/2 yields multiple candidates)
- *
- * Returns 0-based pageIndex, or null if no match found.
+ * Find the best-matching page for an employee using a 3-tier strategy.
  */
 export function matchEmployeeToPage(
   employee: Employee,
   pages: PageData[]
 ): { pageIndex: number; matchType: 'exact' | 'fuzzy-1' | 'fuzzy-2' | 'name' } | null {
-  // ── Tier 1: Exact match ────────────────────────────────────────────────
-  const exactMatches = pages.filter((p) => p.rawId === employee.id)
+  const empId = employee.id.toUpperCase()
+
+  // ── Tier 1: Exact match (Case Insensitive) ─────────────────────────────
+  const exactMatches = pages.filter((p) => p.rawId?.toUpperCase() === empId)
 
   if (exactMatches.length === 1) {
     return { pageIndex: exactMatches[0].pageIndex, matchType: 'exact' }
   }
   if (exactMatches.length > 1) {
-    // Multiple pages with the same ID — use name fallback to disambiguate
     const idx = nameFallback(employee, exactMatches)
     return idx != null ? { pageIndex: idx, matchType: 'name' } : null
   }
@@ -191,10 +198,9 @@ export function matchEmployeeToPage(
   }
 
   // ── Tier 3: Pure name fallback (no ID match at all) ────────────────────
-  // Requires BOTH first AND last name to avoid partial matches on common surnames.
-  // Minimum score of 5 = firstName match (2) + lastName match (2) + both bonus (1).
   if (employee.firstName && employee.lastName) {
-    const idx = nameFallback(employee, pages, 5)  // require both names (score ≥ 5)
+    // Require a strong score (e.g. both substrings found = 4, or one word boundary + substring = 6)
+    const idx = nameFallback(employee, pages, 4)
     return idx != null ? { pageIndex: idx, matchType: 'name' } : null
   }
 

@@ -95,6 +95,7 @@ export async function sendPayslipEmail(opts: SendPayslipOptions): Promise<void> 
     to: employee.email,
     subject: `Your Payslip — ${employee.name || employee.id}`,
     html: `
+      <meta charset="utf-8">
       <div style="font-family: Arial, sans-serif; color: #1a1a2e; max-width: 600px;">
         <h2 style="color: #1a1a2e; border-bottom: 2px solid #e8a838; padding-bottom: 8px;">
           Payroll Dispatch
