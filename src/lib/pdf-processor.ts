@@ -171,6 +171,22 @@ export function matchEmployeeToPage(
     return idx != null ? { pageIndex: idx, matchType: 'name' } : null
   }
 
+  // ── Tier 1.5: Text substring exact match (ignoring whitespace) ─────────
+  // Sometimes pdf-parse adds weird spaces (e.g., "ER BONGI 01") or the regex fails.
+  const empIdNoSpaces = empId.replace(/\s+/g, '')
+  if (empIdNoSpaces.length >= 5) {
+    const substringMatches = pages.filter((p) => 
+      p.text.replace(/\s+/g, '').toUpperCase().includes(empIdNoSpaces)
+    )
+    if (substringMatches.length === 1) {
+      return { pageIndex: substringMatches[0].pageIndex, matchType: 'exact' }
+    }
+    if (substringMatches.length > 1) {
+      const idx = nameFallback(employee, substringMatches)
+      if (idx != null) return { pageIndex: idx, matchType: 'name' }
+    }
+  }
+
   // ── Tier 2a: Fuzzy — 1 trailing char missing ───────────────────────────
   const fuzzy1 = pages.filter(
     (p) => p.rawId != null && trailingCharsMissing(employee.id, p.rawId) === 1
