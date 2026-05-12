@@ -111,47 +111,39 @@ function trailingCharsMissing(full: string, partial: string): number {
   return -1
 }
 
-export function getNameScore(employee: Employee, text: string): { score: number, hasFirst: boolean, hasLast: boolean } {
-  // Strip punctuation that breaks word boundaries (e.g., "JOSE,")
-  const firstName = (employee.firstName?.trim() ?? '').replace(/[.,]/g, '')
-  const lastName  = (employee.lastName?.trim()  ?? '').replace(/[.,]/g, '')
-
-  if (!firstName && !lastName) return { score: 0, hasFirst: false, hasLast: false }
-
-  const textLower = text.toLowerCase()
-  let score = 0
-  
-  // Use word boundaries to prevent "Ri" from matching "Richard"
-  const hasFirstWord = firstName && new RegExp(`\\b${escapeRegex(firstName)}\\b`, 'i').test(textLower)
-  const hasLastWord  = lastName && new RegExp(`\\b${escapeRegex(lastName)}\\b`, 'i').test(textLower)
-  
-  // Fallback to substring if word boundary fails (e.g. "MENDOZA,RIMER" without spaces)
-  const hasFirstSub = !hasFirstWord && firstName && textLower.includes(firstName.toLowerCase())
-  const hasLastSub  = !hasLastWord && lastName && textLower.includes(lastName.toLowerCase())
-
-  if (hasFirstWord) score += 3
-  else if (hasFirstSub) score += 1
-
-  if (hasLastWord) score += 3
-  else if (hasLastSub) score += 1
-
-  const hasFirst = !!(hasFirstWord || hasFirstSub)
-  const hasLast = !!(hasLastWord || hasLastSub)
-
-  // Bonus: both present
-  if (hasFirst && hasLast) score += 2
-
-  return { score, hasFirst, hasLast }
-}
-
 /**
  * Name-based fallback: score each candidate page by how many words from
  * the employee's first/last name appear in the page text.
  */
 function nameFallback(employee: Employee, candidates: PageData[], minScore = 1): number | null {
+  // Strip punctuation that breaks word boundaries (e.g., "JOSE,")
+  const firstName = (employee.firstName?.trim() ?? '').replace(/[.,]/g, '')
+  const lastName  = (employee.lastName?.trim()  ?? '').replace(/[.,]/g, '')
+
+  if (!firstName && !lastName) return null
+
   const scored = candidates
     .map((p) => {
-      const { score } = getNameScore(employee, p.text)
+      const text = p.text.toLowerCase()
+      let score = 0
+      
+      // Use word boundaries to prevent "Ri" from matching "Richard"
+      const hasFirst = firstName && new RegExp(`\\b${escapeRegex(firstName)}\\b`, 'i').test(text)
+      const hasLast  = lastName && new RegExp(`\\b${escapeRegex(lastName)}\\b`, 'i').test(text)
+      
+      // Fallback to substring if word boundary fails (e.g. "MENDOZA,RIMER" without spaces)
+      const hasFirstSub = !hasFirst && firstName && text.includes(firstName.toLowerCase())
+      const hasLastSub  = !hasLast && lastName && text.includes(lastName.toLowerCase())
+
+      if (hasFirst) score += 3
+      else if (hasFirstSub) score += 1
+
+      if (hasLast) score += 3
+      else if (hasLastSub) score += 1
+
+      // Bonus: both present
+      if ((hasFirst || hasFirstSub) && (hasLast || hasLastSub)) score += 2
+
       return { pageIndex: p.pageIndex, score }
     })
     .filter((s) => s.score >= minScore)
@@ -174,24 +166,14 @@ function nameFallback(employee: Employee, candidates: PageData[], minScore = 1):
 export function matchEmployeeToPage(
   employee: Employee,
   pages: PageData[]
-): { pageIndex: number; matchType: 'exact' | 'fuzzy-1' | 'fuzzy-2' | 'name', warning?: string } | null {
+): { pageIndex: number; matchType: 'exact' | 'fuzzy-1' | 'fuzzy-2' | 'name' } | null {
   const empId = employee.id.toUpperCase()
-
-  // Helper to verify name even on exact/fuzzy ID matches to catch document collisions
-  const verifyName = (pageText: string) => {
-    const { hasFirst, hasLast } = getNameScore(employee, pageText)
-    // If the CSV provides both names, but the PDF completely lacks the first name, flag it
-    if (employee.firstName && employee.lastName && hasLast && !hasFirst) {
-      return `ID matched, but first name '${employee.firstName}' missing on page. Found last name '${employee.lastName}'. Possible collision.`
-    }
-    return undefined
-  }
 
   // ── Tier 1: Exact match (Case Insensitive) ─────────────────────────────
   const exactMatches = pages.filter((p) => p.rawId?.toUpperCase() === empId)
 
   if (exactMatches.length === 1) {
-    return { pageIndex: exactMatches[0].pageIndex, matchType: 'exact', warning: verifyName(exactMatches[0].text) }
+    return { pageIndex: exactMatches[0].pageIndex, matchType: 'exact' }
   }
   if (exactMatches.length > 1) {
     const idx = nameFallback(employee, exactMatches)
@@ -206,7 +188,7 @@ export function matchEmployeeToPage(
       p.text.replace(/\s+/g, '').toUpperCase().includes(empIdNoSpaces)
     )
     if (substringMatches.length === 1) {
-      return { pageIndex: substringMatches[0].pageIndex, matchType: 'exact', warning: verifyName(substringMatches[0].text) }
+      return { pageIndex: substringMatches[0].pageIndex, matchType: 'exact' }
     }
     if (substringMatches.length > 1) {
       const idx = nameFallback(employee, substringMatches)
@@ -220,7 +202,7 @@ export function matchEmployeeToPage(
   )
 
   if (fuzzy1.length === 1) {
-    return { pageIndex: fuzzy1[0].pageIndex, matchType: 'fuzzy-1', warning: verifyName(fuzzy1[0].text) }
+    return { pageIndex: fuzzy1[0].pageIndex, matchType: 'fuzzy-1' }
   }
   if (fuzzy1.length > 1) {
     const idx = nameFallback(employee, fuzzy1)
@@ -233,7 +215,7 @@ export function matchEmployeeToPage(
   )
 
   if (fuzzy2.length === 1) {
-    return { pageIndex: fuzzy2[0].pageIndex, matchType: 'fuzzy-2', warning: verifyName(fuzzy2[0].text) }
+    return { pageIndex: fuzzy2[0].pageIndex, matchType: 'fuzzy-2' }
   }
   if (fuzzy2.length > 1) {
     const idx = nameFallback(employee, fuzzy2)
