@@ -152,26 +152,32 @@ async function processPayroll(opts: ProcessOptions) {
     }
 
     try {
-      if (!isDryRun) {
-        // Extract individual pages using pre-loaded doc objects (no re-parse per employee)
-        const [ledgerPdf, payslipPdf] = await Promise.all([
-          ledgerMatch  ? extractSinglePageFromDoc(ledgerDoc,  ledgerMatch.pageIndex)  : Promise.resolve(null),
-          payslipMatch ? extractSinglePageFromDoc(payslipDoc, payslipMatch.pageIndex) : Promise.resolve(null),
-        ])
+      // Handle warnings from name verification (collisions) before attempting any dispatch
+      if (ledgerMatch?.warning || payslipMatch?.warning) {
+        entry.status = 'failed'
+        entry.error = [ledgerMatch?.warning, payslipMatch?.warning].filter(Boolean).join(' | ')
+      } else {
+        if (!isDryRun) {
+          // Extract individual pages using pre-loaded doc objects (no re-parse per employee)
+          const [ledgerPdf, payslipPdf] = await Promise.all([
+            ledgerMatch  ? extractSinglePageFromDoc(ledgerDoc,  ledgerMatch.pageIndex)  : Promise.resolve(null),
+            payslipMatch ? extractSinglePageFromDoc(payslipDoc, payslipMatch.pageIndex) : Promise.resolve(null),
+          ])
 
-        await sendPayslipEmail({ employee, ledgerPdf, payslipPdf, transporter, from })
-      }
-      entry.status = 'success'
+          await sendPayslipEmail({ employee, ledgerPdf, payslipPdf, transporter, from })
+        }
+        entry.status = 'success'
 
-      // Warn if only one PDF was matched (still sends what we have)
-      if (!ledgerMatch || !payslipMatch) {
-        entry.error = !ledgerMatch
-          ? 'Ledger page not found — only payslip attached.'
-          : 'Payslip page not found — only ledger attached.'
-          
-        if (isDryRun) entry.error += ' (Dry Run)'
-      } else if (isDryRun) {
-        entry.error = 'Matched successfully (Dry Run)'
+        // Warn if only one PDF was matched (still sends what we have)
+        if (!ledgerMatch || !payslipMatch) {
+          entry.error = !ledgerMatch
+            ? 'Ledger page not found — only payslip attached.'
+            : 'Payslip page not found — only ledger attached.'
+            
+          if (isDryRun) entry.error += ' (Dry Run)'
+        } else if (isDryRun) {
+          entry.error = 'Matched successfully (Dry Run)'
+        }
       }
     } catch (err) {
       entry.status = 'failed'
